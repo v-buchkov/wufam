@@ -190,6 +190,7 @@ class MeanVarianceOptimizer(Optimization):
         GhAb = self.constraints.to_GhAb()
         if GhAb["G"] is None and self.constraints.box["box_type"] == "Unbounded":
             x = 1 / self.risk_aversion * np.linalg.inv(self.covmat) @ self.mu
+            x = x / x.sum()
 
             x = pd.Series(x, index=self.constraints.ids)
             self.results.update(
