@@ -163,27 +163,43 @@ class Optimization(ABC):
 
 
 class MeanVarianceOptimizer(Optimization):
-
-    def __init__(self,
-                 constraints: Optional[Constraints] = None,
-                 risk_aversion: float = 1,
-                 **kwargs):
-        super().__init__(
-            constraints=constraints,
-            risk_aversion=risk_aversion,
-            **kwargs
-        )
+    def __init__(
+        self,
+        constraints: Optional[Constraints] = None,
+        risk_aversion: float = 1,
+        **kwargs,
+    ):
+        super().__init__(constraints=constraints, risk_aversion=risk_aversion, **kwargs)
         self.risk_aversion = risk_aversion
+
+        self.mu = None
+        self.covmat = None
 
     def set_objective(self, mu: pd.Series, covmat: pd.DataFrame) -> None:
         self.objective = Objective(
-            q = mu * -1,
-            P = covmat * 2 * self.params['risk_aversion'],
+            q=mu * -1,
+            P=covmat * 2 * self.params["risk_aversion"],
         )
+
+        self.mu = mu
+        self.covmat = covmat
+
         return None
 
     def solve(self) -> None:
-        return super().solve()
+        GhAb = self.constraints.to_GhAb()
+        if GhAb["G"] is None and self.constraints.box["box_type"] == "Unbounded":
+            x = 1 / self.risk_aversion * np.linalg.inv(self.covmat) @ self.mu
+
+            x = pd.Series(x, index=self.constraints.ids)
+            self.results.update(
+                {
+                    "weights": x.to_dict(),
+                    "status": True,
+                }
+            )
+        else:
+            return super().solve()
 
 
 class VarianceMinimizer(Optimization):
