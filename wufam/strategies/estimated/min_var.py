@@ -39,7 +39,7 @@ class MinVariance(BaseEstimatedStrategy):
 
         if (
             self.trading_config.min_exposure is None
-            or self.trading_config.max_exposure is None
+            and self.trading_config.max_exposure is None
         ):
             constr_type = "Unbounded"
         elif self.trading_config.min_exposure >= 0:
