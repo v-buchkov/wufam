@@ -26,9 +26,10 @@ def prepare_data(
 
 def get_exposures(
     factors: pd.DataFrame, targets: pd.DataFrame, return_residuals: bool = False
-) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.Series, pd.DataFrame] | tuple[pd.Series, pd.DataFrame, pd.DataFrame]:
     # TODO(@V): Speedup by vectorizing regressions as tensors
 
+    alphas = pd.Series(index=targets.columns, name="alphas")
     betas = pd.DataFrame(index=targets.columns, columns=factors.columns)
     resids = pd.DataFrame(index=targets.index, columns=targets.columns)
     for stock in targets.columns:
@@ -41,18 +42,20 @@ def get_exposures(
         )
 
         if len(x) == 0:
+            alphas.loc[stock] = np.nan
             betas.loc[stock] = np.nan
             resids[stock] = np.nan
         else:
             lr = sm.OLS(y, x)
             results = lr.fit()
+            alphas.loc[stock] = results.params.iloc[0]
             betas.loc[stock] = results.params.loc[betas.columns]
             resids[stock] = results.resid
 
     if return_residuals:
-        return betas, resids
+        return alphas, betas, resids
 
-    return betas
+    return alphas, betas
 
 
 def get_betas(market_index: pd.Series, targets: pd.DataFrame) -> pd.Series:

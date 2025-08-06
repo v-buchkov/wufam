@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from enum import Enum
 
 import pandas as pd
+
+
+class Weighting(Enum):
+    EW = "equally_weighted"
+    VW = "value_weighted"
 
 
 def read_factors(
@@ -21,11 +27,19 @@ def read_kf_portfolios(
     filename: Path,
     start_date: pd.Timestamp | str | None = None,
     end_date: pd.Timestamp | str | None = None,
+    weighting: Weighting = Weighting.EW,
 ) -> pd.DataFrame:
+    if weighting == Weighting.EW:
+        start_row = 26_045
+        end_row = 52_070
+    else:
+        start_row = 18
+        end_row = 26_042
+
     portfolios_df = pd.read_csv(
         filename,
-        skiprows=26_045,
-        skipfooter=104_126 - 52_070,
+        skiprows=start_row,
+        skipfooter=104_126 - end_row,
         index_col=0,
         engine="python",
     )
@@ -38,12 +52,21 @@ def read_kf_data(
     factors_filename: Path,
     start_date: pd.Timestamp | str | None = None,
     end_date: pd.Timestamp | str | None = None,
+    weighting: str = "equally_weighted",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
-    portfolios = read_kf_portfolios(portfolios_filename, start_date, end_date)
+    weighting = Weighting(weighting)
+
+    portfolios_total_r = read_kf_portfolios(
+        portfolios_filename, start_date, end_date, weighting
+    )
     factors = read_factors(factors_filename, start_date, end_date)
 
-    factors = portfolios.merge(factors, left_index=True, right_index=True, how="left")
+    factors = portfolios_total_r.merge(
+        factors, left_index=True, right_index=True, how="left"
+    )
     rf = factors["RF"]
-    factors = factors.drop(columns=["RF"])
+    factors = factors.drop(columns=["RF"] + portfolios_total_r.columns.tolist())
 
-    return portfolios, factors, rf
+    portfolios_xs_r = portfolios_total_r.sub(rf, axis=0)
+
+    return portfolios_xs_r, factors, rf
