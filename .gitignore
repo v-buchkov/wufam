@@ -1,1 +1,15 @@
 wufam_env/
+**/__pycache__/
+**/.DS_Store
+prod.env
+password.sh
+.idea/
+data/crsp_raw/
+.gitignore
+data/output/top500_data_df.csv
+data/tmp
+raif_presentation/
+data/output/jkp_data_df.csv
+data/output/jkp_presence_matrix.csv
+backtests/checking_returns.ipynb
+backtests/checking_avg_from_paper.ipynb
