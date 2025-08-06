@@ -53,7 +53,7 @@ def read_kf_data(
     start_date: pd.Timestamp | str | None = None,
     end_date: pd.Timestamp | str | None = None,
     weighting: str = "equally_weighted",
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series]:
     weighting = Weighting(weighting)
 
     portfolios_total_r = read_kf_portfolios(
@@ -69,4 +69,4 @@ def read_kf_data(
 
     portfolios_xs_r = portfolios_total_r.sub(rf, axis=0)
 
-    return portfolios_xs_r, factors, rf
+    return portfolios_total_r, portfolios_xs_r, factors, rf
