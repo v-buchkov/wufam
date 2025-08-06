@@ -4,11 +4,20 @@ import numpy as np
 import pandas as pd
 from scipy.stats import f
 
+from wufam.ap.base_asset_pricer import BaseAssetPricer
 from wufam.features.ols_betas import get_exposures
 
 
-class GRSTest:
-    def __init__(self) -> None:
+class UncondFactorModel(BaseAssetPricer):
+    def __init__(self, store_resids: bool = False) -> None:
+        super().__init__()
+
+        self.store_resids = store_resids
+
+        self._alphas = None
+        self._betas = None
+        self._resids = None
+
         self._grs_stat = None
         self._rv_f = None
 
@@ -35,6 +44,14 @@ class GRSTest:
         self._rv_f = f(df_1, df_2)
         self._pval = self._rv_f.sf(self._grs_stat)
 
+        self._alphas = alphas
+        self._betas = betas
+        if self.store_resids:
+            self._resids = resids
+
+    def predict(self, factors_df: pd.DataFrame) -> pd.DataFrame:
+        return self._betas @ factors_df.T
+
     @property
     def grs_stat(self) -> float:
         return self._grs_stat
@@ -49,9 +66,3 @@ class GRSTest:
     @property
     def p_value(self) -> float:
         return self._pval
-
-    def __call__(
-        self, rets_df: pd.DataFrame, factors_df: pd.DataFrame
-    ) -> tuple[float, float]:
-        self.fit(rets_df=rets_df, factors_df=factors_df)
-        return self.grs_stat, self.p_value
