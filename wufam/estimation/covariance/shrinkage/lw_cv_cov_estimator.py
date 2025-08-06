@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import warnings
+
 import numpy as np
 
 if TYPE_CHECKING:
@@ -13,6 +15,8 @@ from sklearn.model_selection import TimeSeriesSplit
 
 from wufam.strategies.optimization_data import PredictionData, TrainingData
 from wufam.estimation.covariance.base_cov_estimator import BaseCovEstimator
+
+warnings.filterwarnings("ignore")
 
 
 class LedoitWolfCVCovEstimator(BaseCovEstimator):

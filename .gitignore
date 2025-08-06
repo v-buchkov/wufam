@@ -13,3 +13,6 @@ data/output/jkp_data_df.csv
 data/output/jkp_presence_matrix.csv
 backtests/checking_returns.ipynb
 backtests/checking_avg_from_paper.ipynb
+backtests/GP-UCB_IS.py
+backtests/1_IPCA.ipynb
+jkp/

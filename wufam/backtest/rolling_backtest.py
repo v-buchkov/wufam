@@ -12,6 +12,7 @@ from wufam.strategies.optimization_data import PredictionData, TrainingData
 def run_rolling_backtest(
     strategy: BaseStrategy,
     excess_returns: pd.DataFrame,
+    factors: pd.DataFrame,
     rf: pd.Series,
     freq: str | None = None,
     trading_lag: int = 1,
@@ -22,7 +23,7 @@ def run_rolling_backtest(
     )
 
     weights = get_rolling_weights(
-        strategy, excess_returns, schedule, trading_lag, window_size
+        strategy, excess_returns, factors, schedule, trading_lag, window_size
     ).astype(float)
 
     total_returns = excess_returns.add(rf, axis=0)
@@ -44,6 +45,9 @@ def generate_rebal_schedule(
 ) -> pd.DatetimeIndex:
     date_index = dates
 
+    if freq == "each":
+        return date_index[1:]
+
     if freq is None:
         schedule = date_index
     else:
@@ -61,12 +65,13 @@ def generate_rebal_schedule(
 def get_rolling_weights(
     strategy: BaseStrategy,
     excess_returns: pd.DataFrame,
+    factors: pd.DataFrame,
     schedule: pd.DatetimeIndex,
     trading_lag: int = 1,
     window_size: int | None = None,
 ) -> pd.DataFrame:
     weights = pd.DataFrame(index=schedule, columns=excess_returns.columns)
-    for date in tqdm(schedule, desc="Optimizing Strategy:"):
+    for date in tqdm(schedule, desc="Optimizing Strategy"):
         if window_size is not None:
             start_date = date - pd.Timedelta(days=window_size)
         else:
@@ -76,6 +81,7 @@ def get_rolling_weights(
             simple_excess_returns=excess_returns.loc[
                 start_date : date - pd.Timedelta(trading_lag)
             ],
+            factors=factors.loc[start_date : date - pd.Timedelta(trading_lag)],
         )
 
         strategy.fit(training_data)
