@@ -23,16 +23,16 @@ class UncondFactorModel(BaseAssetPricer):
 
         self._pval = None
 
-    def fit(self, rets_df: pd.DataFrame, factors_df: pd.DataFrame) -> None:
+    def fit(self, test_assets_xs_r: pd.DataFrame, factors_df: pd.DataFrame) -> None:
         alphas, betas, resids = get_exposures(
-            factors=factors_df, targets=rets_df, return_residuals=True
+            factors=factors_df, targets=test_assets_xs_r, return_residuals=True
         )
 
         resid_cov = resids.cov()
         resid_cov_inv = np.linalg.inv(resid_cov)
 
-        df_1 = rets_df.shape[1]
-        df_2 = rets_df.shape[0] - rets_df.shape[1] - 1
+        df_1 = test_assets_xs_r.shape[1]
+        df_2 = test_assets_xs_r.shape[0] - test_assets_xs_r.shape[1] - 1
 
         const_adj = (
             1 + (factors_df.mean(axis=0).mean() / factors_df.std(axis=0).mean()) ** 2

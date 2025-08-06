@@ -23,8 +23,8 @@ class BaseAssetPricer(ABC):
 
         ts_average = test_assets_xs_r.mean(axis=0)
 
-        model_deviation = ts_average - pred_xs_r.mean(axis=0)
-        baseline_deviation = ts_average - ts_average.mean() * np.ones((len(ts_average), 1))
+        model_deviation = ts_average - pred_xs_r.mean(axis=1)
+        baseline_deviation = ts_average - ts_average.mean() * np.ones(len(ts_average))
 
         return model_deviation, baseline_deviation
 
