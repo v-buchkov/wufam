@@ -26,7 +26,11 @@ def read_factors(
         skip_footer = 1_296 - 1_192
 
     factors = pd.read_csv(
-        filename, skiprows=skip_rows, skipfooter=skip_footer, index_col=0, engine="python"
+        filename,
+        skiprows=skip_rows,
+        skipfooter=skip_footer,
+        index_col=0,
+        engine="python",
     )
     factors.index = pd.to_datetime(factors.index, format=date_format)
     return factors.loc[start_date:end_date] / 100
