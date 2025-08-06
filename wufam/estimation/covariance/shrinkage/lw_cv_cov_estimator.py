@@ -33,11 +33,14 @@ class LedoitWolfCVCovEstimator(BaseCovEstimator):
         self._fitted_cov = None
         self.best_alpha = None
 
+        self.history_alphas = []
+
     def _fit(self, training_data: TrainingData) -> None:
         ret = training_data.simple_excess_returns
 
         if self.alphas is not None:
             self.best_alpha = self._find_cv_shrinkage(ret)
+            self.history_alphas.append(self.best_alpha)
 
             lw = ShrunkCovariance(shrinkage=self.best_alpha)
             lw.fit(ret)

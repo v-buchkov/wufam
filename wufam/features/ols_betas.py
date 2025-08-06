@@ -6,7 +6,9 @@ import statsmodels.api as sm
 
 
 def prepare_data(
-    risk_premia: pd.DataFrame, excess_r: pd.Series
+    risk_premia: pd.DataFrame,
+    excess_r: pd.Series,
+    with_const: bool = True,
 ) -> tuple[pd.Series, pd.DataFrame]:
     data = pd.merge_asof(
         risk_premia,
@@ -19,17 +21,28 @@ def prepare_data(
 
     y = data[excess_r.name]
     x = data[risk_premia.columns]
-    x = sm.add_constant(x)
+
+    if with_const:
+        x = sm.add_constant(x)
 
     return y, x
 
 
 def get_exposures(
-    factors: pd.DataFrame, targets: pd.DataFrame, return_residuals: bool = False
-) -> tuple[pd.Series, pd.DataFrame] | tuple[pd.Series, pd.DataFrame, pd.DataFrame]:
+    factors: pd.DataFrame,
+    targets: pd.DataFrame,
+    return_residuals: bool = False,
+    with_const: bool = True,
+) -> (
+    pd.DataFrame
+    | tuple[pd.DataFrame, pd.DataFrame]
+    | tuple[pd.Series, pd.DataFrame]
+    | tuple[pd.Series, pd.DataFrame, pd.DataFrame]
+):
     # TODO(@V): Speedup by vectorizing regressions as tensors
 
-    alphas = pd.Series(index=targets.columns, name="alphas")
+    if with_const:
+        alphas = pd.Series(index=targets.columns, name="alphas")
     betas = pd.DataFrame(index=targets.columns, columns=factors.columns)
     resids = pd.DataFrame(index=targets.index, columns=targets.columns)
     for stock in targets.columns:
@@ -42,20 +55,28 @@ def get_exposures(
         )
 
         if len(x) == 0:
-            alphas.loc[stock] = np.nan
+            if with_const:
+                alphas.loc[stock] = np.nan
             betas.loc[stock] = np.nan
             resids[stock] = np.nan
         else:
             lr = sm.OLS(y, x)
             results = lr.fit()
-            alphas.loc[stock] = results.params.iloc[0]
+            if with_const:
+                alphas.loc[stock] = results.params.iloc[0]
             betas.loc[stock] = results.params.loc[betas.columns]
             resids[stock] = results.resid
 
     if return_residuals:
-        return alphas, betas, resids
+        if with_const:
+            return alphas, betas, resids
+        else:
+            return betas, resids
 
-    return alphas, betas
+    if with_const:
+        return alphas, betas
+    else:
+        return betas
 
 
 def get_betas(market_index: pd.Series, targets: pd.DataFrame) -> pd.Series:

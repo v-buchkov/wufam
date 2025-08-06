@@ -16,3 +16,4 @@ backtests/checking_avg_from_paper.ipynb
 backtests/GP-UCB_IS.py
 backtests/1_IPCA.ipynb
 jkp/
+backtests/test_KNS.ipynb
