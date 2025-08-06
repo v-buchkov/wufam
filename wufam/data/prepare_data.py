@@ -16,10 +16,19 @@ def read_factors(
     start_date: pd.Timestamp | str | None = None,
     end_date: pd.Timestamp | str | None = None,
 ) -> pd.Series:
+    if "daily" in str(filename).lower():
+        date_format = "%Y%m%d"
+        skip_rows = 4
+        skip_footer = 3
+    else:
+        date_format = "%Y%m"
+        skip_rows = 3
+        skip_footer = 1_296 - 1_192
+
     factors = pd.read_csv(
-        filename, skiprows=4, skipfooter=3, index_col=0, engine="python"
+        filename, skiprows=skip_rows, skipfooter=skip_footer, index_col=0, engine="python"
     )
-    factors.index = pd.to_datetime(factors.index, format="%Y%m%d")
+    factors.index = pd.to_datetime(factors.index, format=date_format)
     return factors.loc[start_date:end_date] / 100
 
 
@@ -29,21 +38,34 @@ def read_kf_portfolios(
     end_date: pd.Timestamp | str | None = None,
     weighting: Weighting = Weighting.EW,
 ) -> pd.DataFrame:
-    if weighting == Weighting.EW:
-        start_row = 26_045
-        end_row = 52_070
+    if "daily" in str(filename).lower():
+        if weighting == Weighting.EW:
+            start_row = 26_046
+            end_row = 52_070
+        else:
+            start_row = 19
+            end_row = 26_042
+        skip_footer = 104_126 - end_row
+        date_format = "%Y%m%d"
     else:
-        start_row = 18
-        end_row = 26_042
+        if weighting == Weighting.EW:
+            start_row = 1_208
+            end_row = 2_396
+        else:
+            start_row = 16
+            end_row = 1_205
+        skip_footer = 8881 - end_row
+        date_format = "%Y%m"
 
     portfolios_df = pd.read_csv(
         filename,
-        skiprows=start_row,
-        skipfooter=104_126 - end_row,
+        skiprows=start_row - 1,
+        skipfooter=skip_footer,
         index_col=0,
         engine="python",
     )
-    portfolios_df.index = pd.to_datetime(portfolios_df.index, format="%Y%m%d")
+
+    portfolios_df.index = pd.to_datetime(portfolios_df.index, format=date_format)
     return portfolios_df.loc[start_date:end_date] / 100
 
 
