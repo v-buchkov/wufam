@@ -17,7 +17,9 @@ def run_rolling_backtest(
     trading_lag: int = 1,
     window_size: int | None = None,
 ) -> tuple[pd.DataFrame, pd.Series]:
-    schedule = generate_rebal_schedule(dates=excess_returns.index, ret=excess_returns, freq=freq)
+    schedule = generate_rebal_schedule(
+        dates=excess_returns.index, ret=excess_returns, freq=freq
+    )
 
     weights = get_rolling_weights(
         strategy, excess_returns, schedule, trading_lag, window_size
@@ -37,15 +39,15 @@ def calc_turnover(weights: pd.DataFrame, month_end_weights: pd.DataFrame) -> pd.
     return month_end_weights.diff().dropna().loc[weights.index[1:]].abs().sum(axis=1)
 
 
-def generate_rebal_schedule(dates: pd.Index, ret: pd.DataFrame, freq: str | None) -> pd.DatetimeIndex:
+def generate_rebal_schedule(
+    dates: pd.Index, ret: pd.DataFrame, freq: str | None
+) -> pd.DatetimeIndex:
     date_index = dates
 
     if freq is None:
         schedule = date_index
     else:
-        schedule = (
-            ret.groupby(date_index.to_period(freq.rstrip("E"))).tail(1).index
-        )
+        schedule = ret.groupby(date_index.to_period(freq.rstrip("E"))).tail(1).index
 
     if schedule[-1] == date_index[-1]:
         schedule = schedule[:-1]
@@ -71,7 +73,9 @@ def get_rolling_weights(
             start_date = None
 
         training_data = TrainingData(
-            simple_excess_returns=excess_returns.loc[start_date:date - pd.Timedelta(trading_lag)],
+            simple_excess_returns=excess_returns.loc[
+                start_date : date - pd.Timedelta(trading_lag)
+            ],
         )
 
         strategy.fit(training_data)
