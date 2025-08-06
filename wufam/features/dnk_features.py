@@ -52,9 +52,7 @@ def create_dnk_features(
 ) -> pd.DataFrame:
     # 1. Avg Corr.
     # Calculate rolling average correlation of non-diagonal elements
-    rolling_avg_corr = _rolling_feature(
-        ret, avg_corr, "avg_corr", verbose=verbose
-    )
+    rolling_avg_corr = _rolling_feature(ret, avg_corr, "avg_corr", verbose=verbose)
 
     # 2. Average volatility.
     avg_vol = _rolling_feature(
