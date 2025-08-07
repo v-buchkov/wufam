@@ -25,13 +25,15 @@ class IPCAFactorModel(BaseAssetPricer):
 
     def fit(self, test_assets_xs_r: pd.Series, ranks: pd.DataFrame) -> None:
         self.ipca = InstrumentedPCA(
-            n_factors=self.n_factors, intercept=self.fit_alpha, max_iter=50
+            n_factors=self.n_factors,
+            intercept=self.fit_alpha,
+            max_iter=10_000,
         )
         self.ipca = self.ipca.fit(X=ranks, y=test_assets_xs_r)
         self.Gamma, self.Factors = self.ipca.get_factors(label_ind=True)
 
     def predict(self, ranks: pd.DataFrame) -> pd.DataFrame:
-        pred = self.ipca.predict(ranks)
+        pred = self.ipca.predict(X=ranks)
         pred = pd.DataFrame(pred, index=ranks.index, columns=["pred"])
         return pd.pivot_table(pred, index="date", columns="portfolio", values="pred")
 
@@ -70,10 +72,6 @@ class IPCAFactorModel(BaseAssetPricer):
         mse_baseline = baseline_deviation.T @ var_r_inv @ baseline_deviation
 
         return 1 - mse_model / mse_baseline
-
-    def implied_sharpe_ratio(
-        self, test_assets_xs_r: pd.DataFrame, ranks: pd.DataFrame
-    ) -> float: ...
 
     def get_mv_weights(
         self, test_assets_xs_r: pd.DataFrame, ranks: pd.DataFrame

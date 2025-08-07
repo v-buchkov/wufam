@@ -39,8 +39,14 @@ class VolManagedStrategy(BaseEstimatedStrategy):
         self._vols_history.append(self._current_vols)
 
     def _optimize(self, prediction_data: PredictionData) -> pd.DataFrame:
-        weights = np.array(self._vols_history[:-1]).mean(axis=0) / self._current_vols if len(self._vols_history) > 3 else np.ones_like(self._current_vols).reshape(-1, 1)
-        weights = np.clip(weights, self.trading_config.min_exposure, self.trading_config.max_exposure)
+        weights = (
+            np.array(self._vols_history[:-1]).mean(axis=0) / self._current_vols
+            if len(self._vols_history) > 3
+            else np.ones_like(self._current_vols).reshape(-1, 1)
+        )
+        weights = np.clip(
+            weights, self.trading_config.min_exposure, self.trading_config.max_exposure
+        )
         weights = self._combine_strategies(weights)
 
         return pd.Series(weights.flatten(), index=self.available_assets)
