@@ -17,7 +17,8 @@ def run_rolling_backtest(
     freq: str | None = None,
     trading_lag: int = 1,
     window_size: int | None = None,
-) -> tuple[pd.DataFrame, pd.Series]:
+    return_weights: bool = False,
+) -> tuple[pd.DataFrame, pd.Series] | tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
     schedule = generate_rebal_schedule(
         dates=excess_returns.index, ret=excess_returns, freq=freq
     )
@@ -32,6 +33,9 @@ def run_rolling_backtest(
     )
 
     turnover = calc_turnover(weights=weights, month_end_weights=me_weights)
+
+    if return_weights:
+        return strategy_total_r, turnover, me_weights
 
     return strategy_total_r, turnover
 

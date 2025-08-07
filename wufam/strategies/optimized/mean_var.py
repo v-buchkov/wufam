@@ -12,12 +12,10 @@ from wufam.estimation.mean.base_mu_estimator import BaseMuEstimator
 from wufam.estimation.covariance.base_cov_estimator import BaseCovEstimator
 from wufam.optimization.constraints import Constraints
 from wufam.optimization.optimization import MeanVarianceOptimizer
-from wufam.strategies.estimated.base_estimated_strategy import BaseEstimatedStrategy
+from wufam.strategies.optimized.base_estimated_strategy import BaseEstimatedStrategy
 
 
 class MeanVariance(BaseEstimatedStrategy):
-    PERCENTAGE_VALID_POINTS = 1.0
-
     def __init__(
         self,
         mu_estimator: BaseMuEstimator,

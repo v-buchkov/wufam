@@ -11,12 +11,10 @@ from wufam.config.trading_config import TradingConfig
 from wufam.estimation.covariance.base_cov_estimator import BaseCovEstimator
 from wufam.optimization.constraints import Constraints
 from wufam.optimization.optimization import VarianceMinimizer
-from wufam.strategies.estimated.base_estimated_strategy import BaseEstimatedStrategy
+from wufam.strategies.optimized.base_estimated_strategy import BaseEstimatedStrategy
 
 
 class MinVariance(BaseEstimatedStrategy):
-    PERCENTAGE_VALID_POINTS = 1.0
-
     def __init__(
         self,
         cov_estimator: BaseCovEstimator,
