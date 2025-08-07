@@ -8,13 +8,13 @@ import pandas as pd
 from sklearn.decomposition import PCA
 import statsmodels.api as sm
 
-from wufam.ap.uncond_factor_model import UncondFactorModel
+from wufam.ap.base_asset_pricer import BaseAssetPricer
 from wufam.features.ols_betas import get_exposures
 
 warnings.filterwarnings("ignore")
 
 
-class KNSFactorModel(UncondFactorModel):
+class KNSFactorModel(BaseAssetPricer):
     def __init__(self, l1_penalty: float, l2_penalty: float) -> None:
         super().__init__()
 
