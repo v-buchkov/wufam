@@ -1,0 +1,1054 @@
+---
+title: "Summer School Project"
+author: "CW"
+date: "2025-08-05"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+library(quantmod)
+library(dplyr)
+library(tidyquant)
+library(TTR)
+library(tidyr)
+library(corrplot)
+library(MASS)
+library(tidyverse)
+library(tibble)
+library(quadprog)
+library(frenchdata)
+library(lubridate)
+library(purrr)
+library(broom)
+library(kableExtra)
+```
+
+## Data Download
+
+```{r}
+start_date_famafrench <- as.Date("1970-01-01")
+
+end_date_famafrench <- as.Date("2024-12-31")
+
+## FF Data Portfolios are already in excess of the 1-month riskfree rate
+
+# 1. Download daily Fama-French portfolios
+ff_ds_ports_raw <- download_french_data("25 Portfolios Formed on Size and Book-to-Market (5 x 5)")
+ff_ds_tbl <- ff_ds_ports_raw$subsets$data[[1]]
+
+# 2. Clean and transform
+
+ff_ds_ports <- ff_ds_tbl %>%
+  # Convert date from integer YYYYMMDD to proper Date format
+  mutate(date = ymd(paste0(date, "01"))) %>%
+  # Convert returns from percent to decimal
+  mutate(across(-date, ~ as.numeric(.) / 100)) %>%
+  # Rename columns to lowercase for consistency
+  rename_with(str_to_lower) %>%
+  # Filter by start date
+  filter(date >= start_date_famafrench & date <= end_date_famafrench)
+
+```
+
+## Task 2
+
+### Definition of Strategies
+
+```{r}
+## 1. Create the weights for the mean-variance portfolio in-sample and create time series
+
+mean_variance_strategy <- function(returns_predict_df,returns_test_df, periods_per_year){
+  port_returns <- as.matrix(returns_predict_df)
+  exp_returns <- colMeans(port_returns) * periods_per_year
+  Sigma <- cov(port_returns) * periods_per_year
+  
+  raw_weights <- solve(Sigma) %*% exp_returns 
+  weights_mv <- raw_weights / sum(raw_weights)
+  return(list(
+    weights = weights_mv,
+    return_series =as.vector(as.matrix(returns_test_df) %*% weights_mv))
+  )
+}
+
+## 2. Create time series for the naive portfolio
+
+naive_strategy <- function(returns_predict_df,returns_test_df, periods_per_year){
+  N <- ncol(returns_predict_df)
+  weights_naive <-  rep(1 / N,N)
+  return(list(
+    weights = weights_naive,
+    return_series =as.vector(as.matrix(returns_test_df) %*% weights_naive))
+  )
+}
+
+# 3. Create the weights and the time series for the estimation error minimizing technique --> Constraint GMV & Naive Portfolio
+
+c_gmv_naive_strategy <- function(returns_predict_df,returns_test_df, periods_per_year){
+  N <- ncol(returns_predict_df)
+
+  a_vec <- rep(0.5 * 1 / N,N) ## Weights should be bigger than a 
+  
+  port_returns <- as.matrix(returns_predict_df)
+  Sigma <- cov(port_returns) * periods_per_year
+  
+  Dmat <- 2 * Sigma 
+  dvec <- rep(0, N)
+  
+  # Constraint: sum(weights) == 1
+  A_eq <- rep(1, N)
+  b_eq <- 1
+  
+  # Constraint: weights >= a_vec
+  A_ineq <- diag(N)
+  b_ineq <- a_vec
+  
+  # Combine constraints: 
+  Amat <- cbind(A_eq, A_ineq)      
+  bvec <- c(b_eq, b_ineq)
+  meq <- 1                          # First constraint is equality
+  
+  # Solve
+  result <- solve.QP(Dmat, dvec, Amat, bvec, meq = meq)
+  c_gmv_naive_weights <- result$solution
+
+  
+  return(list(
+    weights = c_gmv_naive_weights,
+    return_series =as.vector(as.matrix(returns_test_df) %*% c_gmv_naive_weights))
+  )
+}
+
+Strategy_returns <- data.frame(
+  mv_portfolio = 
+       mean_variance_strategy(ff_ds_ports[,-1],ff_ds_ports[,-1],12)$return_series,
+  naive_portfolio = naive_strategy(ff_ds_ports[,-1],ff_ds_ports[,-1],12)$return_series,
+  c_gmv_naive_portfolio = c_gmv_naive_strategy(ff_ds_ports[,-1],ff_ds_ports[,-1],12)$return_series
+  )
+
+```
+
+### Sharpe Ratios
+
+```{r}
+# Caluclate the Sharpe Ratio for In-Sample Strategies
+
+sharpe_ratio <- function(x, periods_per_year = 12) {
+  mean(x, na.rm = TRUE) / sd(x, na.rm = TRUE) * sqrt(periods_per_year)
+}
+
+sharpe_ratio_IS <- Strategy_returns %>%
+  summarise(across(everything(), sharpe_ratio, .names = "sharpe_{.col}"))
+```
+
+## Task 3: Out-of-Sample Strategy Evaluation
+
+```{r}
+N <- nrow(ff_ds_ports)
+predict <- ff_ds_ports[1:round(N/2),-1]
+test <- ff_ds_ports[round(N/2)+1:N,-1]
+
+Strategy_returns_OoS <- data.frame(
+  mv_portfolio = mean_variance_strategy(predict,test,12)$return_series,
+  naive_portfolio = naive_strategy(predict,test,12)$return_series,
+  c_gmv_naive_portfolio = c_gmv_naive_strategy(predict,test,12)$return_series
+  )
+
+sharpe_ratio_OoS <- Strategy_returns_OoS %>%
+  summarise(across(everything(), sharpe_ratio, .names = "sharpe_{.col}"))
+
+
+print(sharpe_ratio_IS)
+print(sharpe_ratio_OoS)
+
+```
+
+## 1.4
+
+```{r}
+# 1. Download daily Fama-French portfolios
+ff3_ports_raw <- download_french_data("Fama/French 3 Factors")
+ff3_tbl <- ff3_ports_raw$subsets$data[[1]]
+
+# 2. Clean and transform
+
+ff3_ports <- ff3_tbl %>%
+  # Convert date from integer YYYYMMDD to proper Date format
+  mutate(date = ymd(paste0(date, "01"))) %>%
+  # Convert returns from percent to decimal
+  mutate(across(-date, ~ as.numeric(.) / 100)) %>%
+  # Rename columns to lowercase for consistency
+  rename_with(str_to_lower) %>%
+  # Filter by start date
+  filter(date >= start_date_famafrench & date <= end_date_famafrench) 
+
+ff_ports_factors <- ff_ds_ports %>%
+  left_join(ff3_ports, by = "date")
+
+# Identify the portfolio columns
+portfolio_cols <- ff_ports_factors %>%
+  dplyr::select(-c(date,`mkt-rf`, smb, hml, rf)) %>%
+  names()
+
+ff_ports_factors %>%
+  mutate(across(portfolio_cols, ~ as.numeric(.) - rf))
+```
+### Create own Factor from 5*5 double sort portfolio
+
+```{r}
+ff_ports_factors <- ff_ports_factors %>%
+  mutate(
+    new_hml = (
+      (`small hibm` + `me2 bm5` + `me3 bm5` + `me4 bm5` + `big hibm`) / 5 -
+      (`small lobm` + `me2 bm1` + `me3 bm1` + `me4 bm1` + `big lobm`) / 5
+    )
+  )
+
+# First, pivot the data to long format
+ff_long <- ff_ports_factors %>%
+  dplyr::select(date, hml, new_hml) %>%
+  pivot_longer(cols = c(hml, new_hml), names_to = "Factor", values_to = "Value")
+
+# Now, plot using ggplot
+ggplot(ff_long, aes(x = date, y = Value, color = Factor)) +
+  geom_line(linewidth = 0.3) +
+  labs(
+    title = "Comparison of Original HML and New HML Factors Over Time",
+    x = "Date",
+    y = "Factor Value",
+    color = "Factor"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom"
+  )
+
+# Compute cumulative returns
+ff_cum <- ff_ports_factors %>%
+  dplyr::select(date, hml, new_hml) %>%
+  arrange(date) %>%
+  mutate(
+    hml_cum = cumprod(1 + hml),
+    new_hml_cum = cumprod(1 + new_hml)
+  ) %>%
+  dplyr::select(date, hml_cum, new_hml_cum) %>%
+  pivot_longer(cols = c(hml_cum, new_hml_cum), names_to = "Factor", values_to = "CumulativeReturn")
+
+# Plot cumulative returns
+ggplot(ff_cum, aes(x = date, y = CumulativeReturn, color = Factor)) +
+  geom_line(size = 1) +
+  labs(
+    title = "Cumulative Return of HML and New HML Over Time",
+    x = "Date",
+    y = "Cumulative Return (Growth of $1)",
+    color = "Factor"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom"
+  )
+
+```
+
+### CAPM Single Factor Model
+
+```{r}
+capm_results <- ff_ports_factors %>%
+  pivot_longer(cols = all_of(portfolio_cols), names_to = "portfolio", values_to = "return") %>%
+  group_by(portfolio) %>% 
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(return ~ `mkt-rf`, data = .x)),
+    tidied = map(model, tidy),
+    glanced = map(model, glance),       # R², F-stat, etc.
+    augmented = map2(model, data, augment)  # fitted values and residuals
+  ) 
+
+capm_residuals <- capm_results %>%
+  dplyr::select(portfolio, augmented) %>%
+  unnest(augmented) %>%
+  dplyr::select(portfolio, date,.resid) %>%
+  pivot_wider(names_from = portfolio, values_from = .resid)
+
+capm_stats <- capm_results %>%
+  dplyr::select(portfolio, tidied, glanced) %>%
+  unnest(c(tidied, glanced), names_sep = "_")
+  
+
+```
+
+
+### Fama-French 3 Factor Model 
+
+```{r}
+# Run Fama-French 3-factor regressions with residuals
+ff3_results <- ff_ports_factors %>%
+  pivot_longer(cols = all_of(portfolio_cols), names_to = "portfolio", values_to = "return") %>%
+  group_by(portfolio) %>% 
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(return ~ `mkt-rf` + smb + new_hml, data = .x)),
+    tidied = map(model, tidy),          # coefficients, std errors, p-values
+    glanced = map(model, glance),       # R², F-stat, etc.
+    augmented = map2(model, data, augment)  # fitted values and residuals
+  )
+
+ff3_residuals <- ff3_results %>%
+  dplyr::select(portfolio, augmented) %>%
+  unnest(augmented) %>%
+  dplyr::select(portfolio, date,.resid) %>%
+  pivot_wider(names_from = portfolio, values_from = .resid)
+
+ff3_stats <- ff3_results %>%
+  dplyr::select(portfolio, tidied, glanced) %>%
+  unnest(c(tidied, glanced), names_sep = "_")
+```
+
+### GRS test statistic for joint significance of Jensen Alpha
+
+### 1) General stats needed
+
+```{r}
+N <- length(portfolio_cols)
+T <- nrow(ff_ports_factors)
+
+avg_ex_market <- mean(ff_ports_factors$`mkt-rf`)
+sd_ex_market <- sd(ff_ports_factors$`mkt-rf`)
+
+# Creating the test statistic
+f_stat <- qf(0.95, df1 = N, df2 = T - N-1)
+```
+
+
+### 2) CAPM Regression
+
+```{r}
+est_alpha <- capm_stats %>%
+  filter(tidied_term == "(Intercept)") %>%
+  dplyr::select(tidied_estimate)%>%
+  deframe()
+
+res_matrix <- as.matrix(capm_residuals[,-1])
+
+res_cov_est_inv <- solve(cov(res_matrix))
+
+correction_term_CAPM <- ((T-N-1)/N) * 1/(1+ (avg_ex_market/sd_ex_market)^2) 
+
+GRS_CAPM <- correction_term_CAPM * t(est_alpha) %*% res_cov_est_inv %*% est_alpha
+
+p_value_CAPM <- pf(GRS_CAPM, df1 = N, df2 = T-N-1, lower.tail = FALSE)
+
+p_value_CAPM
+
+```
+
+### 2) Three-Factor Regression
+
+```{r}
+est_alpha <- ff3_stats %>%
+  filter(tidied_term == "(Intercept)") %>%
+  dplyr::select(tidied_estimate)%>%
+  deframe()
+
+ff3_ports <- ff_ports_factors[c("mkt-rf","smb","new_hml")]
+
+res_matrix <- as.matrix(ff3_residuals[,-1])
+
+res_cov_est_inv <- solve(cov(res_matrix))
+
+avg_factor_ret <- colMeans(ff3_ports)
+cov_factor_ret <- cov(as.matrix(ff3_ports))
+
+correction_term_FF3 <- ((T-N-3)/N) * 1/(1+ t(avg_factor_ret) %*% solve(cov_factor_ret) %*% avg_factor_ret) 
+
+GRS_FF3 <- correction_term_FF3 * t(est_alpha) %*% res_cov_est_inv %*% est_alpha
+
+p_value_FF3 <- pf(GRS_FF3, df1 = N, df2 = T-N-3, lower.tail = FALSE)
+
+p_value_FF3
+```
+
+### Metrics measuring cross-sectional fit
+
+### 1) R^2 from an OLS cross-sectional regression
+
+```{r}
+# Sample average excess returns
+sample_avg_ex_ret <- colMeans(ff_ports_factors %>%
+                                dplyr::select(all_of(portfolio_cols)))
+# Cross Sectional Average of Excess Returns
+mu_R <- mean(sample_avg_ex_ret)
+
+# 1. CAPM
+est_betas <- capm_stats %>%
+  filter(tidied_term == "`mkt-rf`") %>%
+  dplyr::select(tidied_estimate)%>%
+  deframe()
+
+# CAPM-implied expected returns
+exp_ex_ret_CAPM <- est_betas * avg_ex_market
+
+SSR_CAPM <- sum((sample_avg_ex_ret - exp_ex_ret_CAPM)^2)
+TSS_CAPM <- sum((sample_avg_ex_ret - mu_R)^2)
+
+R2_OLS_CAPM <- 1 - SSR_CAPM / TSS_CAPM
+
+# 2. FF3
+
+factor_loadings <- ff3_stats %>%
+  # Keep only the beta coefficients, not intercepts
+  filter(tidied_term %in% c("`mkt-rf`", "smb", "new_hml")) %>%
+  dplyr::select(portfolio, factor = tidied_term, beta = tidied_estimate) %>%
+  pivot_wider(names_from = factor, values_from = beta)
+
+# FF3-implied expected returns
+exp_ex_ret_FF3 <- as.matrix(factor_loadings[,-1]) %*% avg_factor_ret
+
+SSR_FF3 <- sum((sample_avg_ex_ret - exp_ex_ret_FF3)^2)
+TSS_FF3 <- sum((sample_avg_ex_ret - mu_R)^2)
+
+R2_OLS_FF3 <- 1 - SSR_FF3 / TSS_FF3
+
+```
+### 2) 
+
+```{r}
+N <- length(portfolio_cols)
+
+RMSE_CAPM <- sqrt(mean((sample_avg_ex_ret - exp_ex_ret_CAPM)^2))
+
+RMSE_FF3 <- sqrt(mean((sample_avg_ex_ret - exp_ex_ret_FF3)^2))
+```
+
+### 3) R^2 from an GLS cross-sectional regression
+
+```{r}
+Sigma_ex_ret <- cov((ff_ports_factors %>%
+                                dplyr::select(all_of(portfolio_cols))))
+
+#1. CAPM
+
+SSR_GLS_CAPM <- t(sample_avg_ex_ret - exp_ex_ret_CAPM) %*% solve(Sigma_ex_ret) %*% (sample_avg_ex_ret - exp_ex_ret_CAPM)
+
+TSS_GLS_CAPM <- t(sample_avg_ex_ret - mu_R) %*% solve(Sigma_ex_ret) %*% (sample_avg_ex_ret - mu_R)
+
+R2_GLS_CAPM <- 1 - SSR_GLS_CAPM / TSS_GLS_CAPM
+
+
+# 2. FF3
+
+SSR_GLS_FF3 <- t(sample_avg_ex_ret - exp_ex_ret_FF3) %*% solve(Sigma_ex_ret) %*% (sample_avg_ex_ret - exp_ex_ret_FF3)
+
+TSS_GLS_FF3 <- t(sample_avg_ex_ret - mu_R) %*% solve(Sigma_ex_ret) %*% (sample_avg_ex_ret - mu_R)
+
+R2_GLS_FF3 <- 1 - SSR_GLS_FF3 / TSS_GLS_FF3
+
+summary_1.4 <- data.frame(
+  Model = c("CAPM", "3 Factors"),
+  GRS_Stat = c(GRS_CAPM,GRS_FF3),
+  GRS_p.val = c(p_value_CAPM,p_value_FF3),
+  R2_OLS = c(R2_OLS_CAPM,R2_OLS_FF3),
+  R2_GLS = c(R2_GLS_CAPM,R2_GLS_FF3),
+  RMSE = c(RMSE_CAPM,RMSE_FF3)
+)
+
+summary_1.4 <- summary_1.4 %>%
+  mutate(
+    GRS_Stat = round(GRS_Stat, 2),
+    GRS_p.val = signif(GRS_p.val, 3),  # good for scientific notation
+    R2_OLS = round(R2_OLS, 3),
+    R2_GLS = round(R2_GLS, 3),
+    RMSE = round(RMSE, 4)
+  )
+
+summary_1.4
+```
+
+## Task 5: OoS Analysis
+
+```{r}
+# Split the data
+N <- nrow(ff_ports_factors)
+N_OoS <- N/2
+predict <- ff_ports_factors[1:round(N/2),]
+test <- ff_ports_factors[(round(N/2)+1):N,]
+
+############## CAPM OoS Return Series #########################################
+
+# MV Weights with CAPM Return and Variance Estimation
+capm_results_predict <- predict %>%
+  pivot_longer(cols = all_of(portfolio_cols), names_to = "portfolio", values_to = "return") %>%
+  group_by(portfolio) %>% 
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(return ~ `mkt-rf`, data = .x)),
+    tidied = map(model, tidy),
+    glanced = map(model, glance),       # R², F-stat, etc.
+    augmented = map2(model, data, augment)  # fitted values and residuals
+  ) 
+
+capm_residuals_predict <- capm_results_predict %>%
+  dplyr::select(portfolio, augmented) %>%
+  unnest(augmented) %>%
+  dplyr::select(portfolio, date,.resid) %>%
+  pivot_wider(names_from = portfolio, values_from = .resid)
+
+capm_stats_predict <- capm_results_predict %>%
+  dplyr::select(portfolio, tidied, glanced) %>%
+  unnest(c(tidied, glanced), names_sep = "_")
+  
+est_betas_predict <- capm_stats_predict %>%
+  filter(tidied_term == "`mkt-rf`") %>%
+  dplyr::select(tidied_estimate)%>%
+  deframe()
+
+exp_ex_ret_CAPM <- est_betas_predict * mean(predict$`mkt-rf`)
+res_covariance_CAPM <- cov(as.matrix(capm_residuals_predict[,-1]))
+
+Covariance_CAPM <- est_betas_predict %*% t(est_betas_predict) * var(predict$`mkt-rf`) + res_covariance_CAPM
+
+raw_weights_CAPM <- solve(Covariance_CAPM) %*% exp_ex_ret_CAPM 
+weights_CAPM <- raw_weights_CAPM / sum(raw_weights_CAPM)
+
+# OoS Sharpe Ratio
+
+CAPM_OoS_ret <- as.matrix(test[portfolio_cols]) %*% as.vector(weights_CAPM)
+Sharpe_CAPM <- sharpe_ratio(CAPM_OoS_ret)
+Sharpe_CAPM                                               
+
+# OoS RMSE 
+
+CAPM_OoS_avg_ex_ret <- colMeans(test[portfolio_cols])
+
+CAPM_expected_ex_ret <- est_betas_predict * colMeans(predict[portfolio_cols])
+
+
+CAPM_OoS_RMSE <- sqrt(mean((CAPM_OoS_avg_ex_ret- CAPM_expected_ex_ret)^2))
+
+############## FF3 Mean-Variance Portfolio OoS Return Series #########################
+
+# MV Weights with FF3 Factor Returns and Variance Estimation
+
+ff3_results_predicted <- predict %>%
+  pivot_longer(cols = all_of(portfolio_cols), names_to = "portfolio", values_to = "return") %>%
+  group_by(portfolio) %>% 
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(return ~ `mkt-rf` + smb + new_hml, data = .x)),
+    tidied = map(model, tidy),          # coefficients, std errors, p-values
+    glanced = map(model, glance),       # R², F-stat, etc.
+    augmented = map2(model, data, augment)  # fitted values and residuals
+  )
+
+ff3_residuals_predicted <- ff3_results_predicted %>%
+  dplyr::select(portfolio, augmented) %>%
+  unnest(augmented) %>%
+  dplyr::select(portfolio, date,.resid) %>%
+  pivot_wider(names_from = portfolio, values_from = .resid)
+
+ff3_stats_predicted <- ff3_results_predicted %>%
+  dplyr::select(portfolio, tidied, glanced) %>%
+  unnest(c(tidied, glanced), names_sep = "_")
+
+factor_loadings_predicted <- ff3_stats_predicted %>%
+  # Keep only the beta coefficients, not intercepts
+  filter(tidied_term %in% c("`mkt-rf`", "smb", "new_hml")) %>%
+  dplyr::select(portfolio, factor = tidied_term, beta = tidied_estimate) %>%
+  pivot_wider(names_from = factor, values_from = beta)
+
+names(factor_loadings_predicted) <- make.names(names(factor_loadings_predicted))
+
+exp_ex_ret_FF3 <- as.vector(as.matrix(factor_loadings_predicted[,-1]) %*% colMeans(predict[c("mkt-rf", "smb", "new_hml")]))
+                            
+res_covariance_FF3 <- cov(as.matrix(ff3_residuals_predicted[,-1]))
+
+Covariance_FF3 <- as.matrix(factor_loadings_predicted[,-1]) %*% cov(as.matrix(predict[c("mkt-rf", "smb","new_hml")])) %*% t(factor_loadings_predicted[,-1]) + res_covariance_FF3 
+
+raw_weights_FF3 <- solve(Covariance_FF3) %*% exp_ex_ret_FF3 
+weights_FF3 <- raw_weights_FF3 / sum(raw_weights_FF3)
+
+# FF3 OoS Sharpe 
+
+FF3_OoS_ret <- as.matrix(test[portfolio_cols]) %*% as.vector(weights_FF3)
+Sharpe_FF3 <- sharpe_ratio(FF3_OoS_ret)
+Sharpe_FF3           
+
+# FF3 OoS RMSE
+
+FF3_expected_ex_ret <- as.matrix(factor_loadings_predicted[,-1]) %*% colMeans(predict[,c("mkt-rf","smb","new_hml")])
+
+FF3_OoS_avg_ex_ret <- colMeans(test[portfolio_cols])
+
+FF3_OoS_RMSE <- sqrt(mean((FF3_OoS_avg_ex_ret  - FF3_expected_ex_ret)^2))
+
+# Summarise 
+
+summary_1.5 <- data.frame(
+  Model = c("CAPM", "3 Factors"),
+  OoS_Sharpe = c(Sharpe_CAPM,Sharpe_FF3),
+  OoS_RMSE = c(CAPM_OoS_RMSE,FF3_OoS_RMSE)
+)
+
+summary_1.5 <- summary_1.5 %>%
+  mutate(across(where(is.numeric), ~ round(.x,4)))
+
+summary_1.5
+
+weights_FF3 - weights_CAPM
+
+sum(weights_CAPM)
+sum(weights_FF3)
+
+# Ensure both vectors are numeric and same length
+par(mfrow = c(1, 2))  # 1 row, 2 columns layout
+
+
+# CAPM plot
+plot(as.numeric(CAPM_OoS_avg_ex_ret), as.numeric(CAPM_expected_ex_ret),
+     xlab = "Realized (OoS)", ylab = "Predicted (In-sample)",
+     main = "CAPM", pch = 16, col = "blue", xlim = c(0, 0.02), ylim = c(0, 0.02))
+abline(0, 1, col = "red", lwd = 2)
+
+# FF3 plot
+plot(as.numeric(FF3_OoS_avg_ex_ret), as.numeric(FF3_expected_ex_ret),
+     xlab = "Realized (OoS)", ylab = "Predicted (In-sample)",
+     main = "FF3", pch = 16, col = "blue", xlim = c(0, 0.015), ylim = c(0, 0.015))
+abline(0, 1, col = "red", lwd = 2)
+
+par(mfrow = c(1, 1))
+
+# Convert weights to a tibble for plotting
+weights_df <- tibble(
+  Portfolio = portfolio_cols,
+  CAPM = as.numeric(weights_CAPM),
+  FF3 = as.numeric(weights_FF3)
+) %>%
+  pivot_longer(cols = c(CAPM, FF3), names_to = "Model", values_to = "Weight")
+
+# Create bar plot
+ggplot(weights_df, aes(x = Portfolio, y = Weight, fill = Model)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(
+    title = "Mean-Variance Portfolio Weights: CAPM vs. FF3",
+    x = "Portfolio",
+    y = "Portfolio Weight",
+    fill = "Model"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5)
+  )
+
+
+```
+
+portfolios will have averaged out betas
+
+
+
+
+
+## 1.6 PCA Analysis
+
+```{r}
+portfolio_cols_ds <- ff_ds_ports %>%
+  dplyr::select(-date) %>%
+  names()
+
+# Exclude date and factor columns (keep only 25 portfolio returns) but use full sample
+returns_matrix <- ff_ds_ports %>%
+  dplyr::select(-date) %>%
+  as.matrix()
+
+PCA_result <- prcomp(returns_matrix, center = FALSE, scale. = FALSE)
+summary(PCA_result)       # Proportion of variance explained
+PCA_result$rotation       # Loadings (i.e., weights of portfolios for each PC)
+
+# Sum of loadings for each principal component
+colSums(PCA_result$rotation)
+
+```
+
+Note: The length (i.e. the Euklidian norm) of each PC is 1, but not the sum of the loadings (PC vector entries). The sum of the loadings is not equal to 1 because the PCs are orthogonal and the loadings represent the contribution of each portfolio to the variance explained by each PC, not a direct weight in a portfolio sense.
+
+```{r}
+# Calculate proportion of variance explained
+explained_var <- PCA_result$sdev^2 / sum(PCA_result$sdev^2)
+
+# Create data frame for plotting
+scree_df <- data.frame(
+  PC = paste0("PC", 1:length(explained_var)),
+  VarianceExplained = explained_var
+)
+
+# Make PC a factor with levels in correct order (PC1, PC2, ..., PC25)
+scree_df$PC <- factor(scree_df$PC, levels = paste0("PC", 1:length(explained_var)))
+
+library(ggplot2)
+
+# Add conditional labels for only the first 3 PCs
+scree_df$label <- ifelse(as.numeric(scree_df$PC) <= 3,
+                         round(scree_df$VarianceExplained, 3),
+                         NA)
+
+ggplot(scree_df, aes(x = PC, y = VarianceExplained)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = label),
+            vjust = -0.3, size = 3.5, na.rm = TRUE) +
+  geom_line(aes(group = 1), color = "black", linetype = "dashed") +
+  geom_point(color = "red") +
+  labs(
+    title = "Scree Plot: Variance Explained by Principal Components",
+    x = "Principal Component",
+    y = "Proportion of Variance Explained"
+  ) +
+  theme_minimal()
+```
+
+The first PC already explains over 80% of the variance, which indicates that the first principal component captures a significant amount of the information contained in the original portfolio returns. This suggests that the portfolios are likely to be highly correlated, and a single factor (the first PC) can represent a large portion of their joint behavior. 
+
+```{r}
+k<-3
+# Get PC scores (these are the time series values of the synthetic factors)
+PC_factors <- as.data.frame(PCA_result$x[, 1:k])
+
+# Add date back in
+PC_factors <- PC_factors %>%
+  mutate(date = ff_ds_ports$date)
+
+# Rename columns for clarity (optional)
+names(PC_factors)[1:k] <- paste0("PC", 1:k)
+
+# Prepare long portfolio data
+long_returns <- ff_ds_ports %>%
+  dplyr::select(date, all_of(portfolio_cols_ds)) %>%
+  pivot_longer(cols = -date, names_to = "portfolio", values_to = "return")
+```
+
+```{r}
+# Merge with PC factors
+long_returns_PC <- left_join(long_returns, PC_factors, by = "date")
+
+# Estimate PC-factor model
+PC_model_results <- long_returns_PC %>%
+  group_by(portfolio) %>%
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(return ~ PC1 + PC2 + PC3, data = .x)),
+    tidied = map(model, tidy),
+    glanced = map(model, glance),
+    augmented = map2(model, data, augment)
+  )
+```
+
+```{r}
+# Create dataset with PCs and factors
+pc_with_factors <- PC_factors %>%
+  left_join(
+    ff_ports_factors %>% dplyr::select(date, `mkt-rf`, smb, new_hml),
+    by = "date"
+  )
+
+summary(lm(PC1 ~ `mkt-rf`, data = pc_with_factors)) # High R^2 of 0.86
+summary(lm(PC1 ~ smb, data = pc_with_factors))
+summary(lm(PC1 ~ new_hml, data = pc_with_factors))
+
+summary(lm(PC2 ~ `mkt-rf`, data = pc_with_factors))
+summary(lm(PC2 ~ smb, data = pc_with_factors))
+summary(lm(PC2 ~ new_hml, data = pc_with_factors))
+
+summary(lm(PC3 ~ `mkt-rf`, data = pc_with_factors))
+summary(lm(PC3 ~ smb, data = pc_with_factors))
+summary(lm(PC3 ~ new_hml, data = pc_with_factors))
+
+```
+
+```{r}
+M<-matrix(c(cor(pc_with_factors$PC1, pc_with_factors$`mkt-rf`),
+  cor(pc_with_factors$PC1, pc_with_factors$smb),
+  cor(pc_with_factors$PC1, pc_with_factors$new_hml),
+  
+  cor(pc_with_factors$PC2, pc_with_factors$`mkt-rf`),
+  cor(pc_with_factors$PC2, pc_with_factors$smb),
+  cor(pc_with_factors$PC2, pc_with_factors$new_hml),
+  
+  cor(pc_with_factors$PC3, pc_with_factors$`mkt-rf`),
+  cor(pc_with_factors$PC3, pc_with_factors$smb),
+  cor(pc_with_factors$PC3, pc_with_factors$new_hml)), nrow=3, byrow=TRUE)
+
+rownames(M) <- c("PC1", "PC2", "PC3")
+colnames(M) <- c("Mkt-RF", "SMB", "New HML")
+M
+
+# Heatplot
+corrplot(M, method = "color", is.corr = TRUE,
+         addCoef.col = "black", tl.col = "black",
+         title = "Correlation between PCs and Factors",
+         mar = c(0,0,2,0))  # adjust margins to make title visible
+```
+```{r}
+factor_time_series <- as.matrix(ff_ports_factors[portfolio_cols]) %*% PCA_result$rotation
+
+factor_time_series <- as.data.frame(factor_time_series[,1:3])
+
+factor_time_series <- factor_time_series %>%
+  mutate(date = ff_ports_factors$date)
+
+ff_ports_factors <- ff_ports_factors %>%
+  left_join(factor_time_series, by = "date" )
+
+# Split the data
+N <- nrow(ff_ports_factors)
+N_OoS <- N/2
+predict <- ff_ports_factors[1:round(N/2),]
+test <- ff_ports_factors[(round(N/2)+1):N,]
+
+
+PCA_results_predicted <- predict %>%
+  pivot_longer(cols = all_of(portfolio_cols), names_to = "portfolio", values_to = "return") %>%
+  group_by(portfolio) %>% 
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(return ~ PC1 + PC2 + PC3, data = .x)),
+    tidied = map(model, tidy),          # coefficients, std errors, p-values
+    glanced = map(model, glance),       # R², F-stat, etc.
+    augmented = map2(model, data, augment)  # fitted values and residuals
+  )
+
+PCA_residuals_predicted <- PCA_results_predicted %>%
+  dplyr::select(portfolio, augmented) %>%
+  unnest(augmented) %>%
+  dplyr::select(portfolio, date,.resid) %>%
+  pivot_wider(names_from = portfolio, values_from = .resid)
+
+PCA_stats_predicted <- PCA_results_predicted %>%
+  dplyr::select(portfolio, tidied, glanced) %>%
+  unnest(c(tidied, glanced), names_sep = "_")
+
+PCA_factor_loadings_predicted <- PCA_stats_predicted %>%
+  # Keep only the beta coefficients, not intercepts
+  filter(tidied_term %in% c("PC1", "PC2", "PC3")) %>%
+  dplyr::select(portfolio, factor = tidied_term, beta = tidied_estimate) %>%
+  pivot_wider(names_from = factor, values_from = beta)
+
+names(PCA_factor_loadings_predicted) <- make.names(names(PCA_factor_loadings_predicted))
+
+exp_ex_ret_PCA <- as.vector(as.matrix(PCA_factor_loadings_predicted[,-1]) %*% colMeans(predict[c("PC1", "PC2", "PC3")]))
+                            
+res_covariance_PCA <- cov(as.matrix(PCA_residuals_predicted[,-1]))
+
+Covariance_PCA <- as.matrix(PCA_factor_loadings_predicted[,-1]) %*% cov(as.matrix(predict[c("PC1", "PC2", "PC3")])) %*% t(PCA_factor_loadings_predicted[,-1]) + res_covariance_PCA
+
+raw_weights_PCA <- solve(Covariance_PCA) %*% exp_ex_ret_PCA
+weights_PCA <- raw_weights_PCA / sum(raw_weights_PCA)
+
+# PCA OoS Sharpe 
+
+PCA_OoS_ret <- as.matrix(test[portfolio_cols]) %*% as.vector(weights_PCA)
+Sharpe_PCA <- sharpe_ratio(PCA_OoS_ret)
+Sharpe_PCA           
+
+# PCA OoS RMSE
+
+PCA_expected_ex_ret <- as.matrix(PCA_factor_loadings_predicted[,-1]) %*% colMeans(predict[,c("PC1", "PC2", "PC3")])
+
+PCA_OoS_avg_ex_ret <- colMeans(test[portfolio_cols])
+
+PCA_OoS_RMSE <- sqrt(mean((PCA_OoS_avg_ex_ret  - PCA_expected_ex_ret)^2))
+
+PCA_OoS_RMSE
+```
+
+```{r}
+# Ensure both vectors are numeric and same length
+par(mfrow = c(1, 3))  # 1 row, 3 columns layout
+# CAPM plot
+plot(as.numeric(CAPM_OoS_avg_ex_ret), as.numeric(CAPM_expected_ex_ret),
+     xlab = "Realized (OoS)", ylab = "Predicted (In-sample)",
+     main = "CAPM", pch = 16, col = "blue", xlim = c(0, 0.02), ylim = c(0, 0.02))
+abline(0, 1, col = "red", lwd = 2)
+
+# FF3 plot
+plot(as.numeric(FF3_OoS_avg_ex_ret), as.numeric(FF3_expected_ex_ret),
+     xlab = "Realized (OoS)", ylab = "Predicted (In-sample)",
+     main = "FF3", pch = 16, col = "blue", xlim = c(0, 0.02), ylim = c(0, 0.02))
+abline(0, 1, col = "red", lwd = 2)
+
+# PCA plot
+plot(as.numeric(PCA_OoS_avg_ex_ret), as.numeric(PCA_expected_ex_ret),
+     xlab = "Realized (OoS)", ylab = "Predicted (In-sample)",
+     main = "PCA", pch = 16, col = "blue", xlim = c(0, 0.02), ylim = c(0, 0.02))
+abline(0, 1, col = "red", lwd = 2)
+
+```
+
+```{r}
+# Convert weights to a tibble for plotting
+weights_df <- tibble(
+  Portfolio = portfolio_cols,
+  CAPM = as.numeric(weights_CAPM),
+  FF3 = as.numeric(weights_FF3),
+  PCA = as.numeric(weights_PCA)
+) %>%
+  pivot_longer(cols = c(CAPM, FF3, PCA), names_to = "Model", values_to = "Weight")
+
+# Create bar plot
+ggplot(weights_df, aes(x = Portfolio, y = Weight, fill = Model)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(
+    title = "Mean-Variance Portfolio Weights: CAPM vs. FF3 vs. PCA",
+    x = "Portfolio",
+    y = "Portfolio Weight",
+    fill = "Model"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(hjust = 0.5)
+  )
+```
+
+## 1.7 
+
+```{r}
+rp_pca_function <- function(return_df, test_df = NULL, gamma, K){
+  
+  # Apply PCA to the matrix
+  return_mat <- as.matrix(return_df)
+  T <- nrow(return_mat)
+  
+  V_shrink <- 1/T * t(return_mat) %*% return_mat + gamma * colMeans(return_mat) %*% t(colMeans(return_mat))
+  
+  eig <- eigen(V_shrink)
+  beta_hat <- eig$vectors  # Principal components
+  
+  # Limit number of PC factors
+  
+  beta_hat <- beta_hat[, 1:K]  # take first K eigenvectors
+  
+  PC_factors <- return_mat %*% beta_hat %*% solve(t(beta_hat) %*% beta_hat)
+  
+  beta_factors <- matrix(NA, ncol = ncol(PC_factors), nrow = ncol(return_mat))
+  
+  for(port in 1:ncol(return_mat)){
+    model <- lm(return_mat[,port] ~ PC_factors)
+    beta_n_hat <- coef(model)[-1]
+    beta_factors[port,] <- beta_n_hat
+  }
+    
+  ## Maximum Sharpe Ratio Portfolio
+  
+  weigths_raw <- solve(cov(PC_factors)) %*% colMeans(PC_factors)
+  
+  weights <- weigths_raw / sum(weigths_raw)
+  
+  ## Look at sharpe ratio in sample
+  
+  mean_ex_ret <- sum(weights * colMeans(PC_factors))
+  
+  sd <- sd(PC_factors %*% weights)
+  
+  Sharpe_iS <- mean_ex_ret / sd 
+  
+  if(!is.null(test_df)) {
+  # Look at sharpe ration out of sample 
+  
+  PC_factors_OoS <- as.matrix(test_df) %*% beta_hat %*% solve(t(beta_hat) %*% beta_hat)
+  
+  mean_ex_ret_OoS <- sum(weights * colMeans(PC_factors_OoS))
+  sd_OoS <- sd(PC_factors_OoS %*% weights)
+  
+  Sharpe_OoS <- mean_ex_ret_OoS / sd_OoS 
+  
+  return( list(
+    Sharpe_iS = Sharpe_iS,
+    Sharpe_OoS = Sharpe_OoS
+  ))
+  }
+  else{
+    return( list(
+    Sharpe_iS = Sharpe_iS,
+    Sharpe_OoS = Sharpe_OoS
+  ))
+  }
+}
+
+rp_pca_function(predict[portfolio_cols], test[portfolio_cols], 20, 3)$Sharpe_iS
+
+```
+
+## Cross Validation
+
+```{r}
+K_values <- 1:25              # Try 1 to 5 PCA factors
+gamma_values <- seq(1, 30, by = 0.5)  # Try some shrinkage values
+
+folds <- cut(seq(1, nrow(predict[portfolio_cols])), breaks = 5, labels = FALSE)
+
+results <- expand.grid(K = K_values, gamma = gamma_values)
+results$Sharpe_CV <- NA
+
+for (i in 1:nrow(results)) {
+  
+  K <- results$K[i]
+  gamma <- results$gamma[i]
+  
+  sharpe_list <- c()
+  
+  for (fold in 1:5) {
+    
+    train_idx <- which(folds != fold)
+    train_data <- predict[train_idx, portfolio_cols]
+    
+    # Try/catch for numerical stability issues (e.g. collinear inputs)
+    try({
+      sharpe <- rp_pca_function(train_data,test[portfolio_cols], gamma, K)$Sharpe_iS
+      sharpe_list <- c(sharpe_list, sharpe)
+    }, silent = TRUE)
+  }
+  
+  results$Sharpe_CV[i] <- mean(sharpe_list, na.rm = TRUE)
+}
+
+best_res <- results %>% arrange(desc(Sharpe_CV)) %>% slice(1)
+
+
+
+best_result_OoS_Sharpe <- rp_pca_function(predict[portfolio_cols],
+                                          test[portfolio_cols],
+                                          K = as.vector(best_res$K),
+                                          gamma = as.vector(best_res$gamma)
+                                          )$Sharpe_OoS
+best_result_OoS_Sharpe
+
+avg_by_K <- results %>%
+  group_by(K) %>%
+  summarise(mean_Sharpe = mean(Sharpe_CV, na.rm = TRUE))
+
+ggplot(avg_by_K, aes(x = K, y = mean_Sharpe)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Average CV Sharpe Ratio by Number of Factors (K)",
+       y = "Mean CV Sharpe",
+       x = "K") +
+  theme_minimal()
+
+avg_by_gamma <- results %>%
+  group_by(gamma) %>%
+  summarise(mean_Sharpe = mean(Sharpe_CV, na.rm = TRUE))
+
+ggplot(avg_by_gamma, aes(x = gamma, y = mean_Sharpe)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Average CV Sharpe Ratio by Gamma",
+       y = "Mean CV Sharpe",
+       x = "Gamma") +
+  theme_minimal()
+
+```
+
+
