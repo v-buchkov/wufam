@@ -7,6 +7,7 @@ import pandas as pd
 
 @dataclass
 class Data:
+    cross_sectional_features: pd.DataFrame | None = None
     features: pd.DataFrame | None = None
 
     prices: pd.DataFrame | None = None

@@ -23,7 +23,7 @@ def read_factors(
     else:
         date_format = "%Y%m"
         skip_rows = 3
-        skip_footer = 1_296 - 1_192
+        skip_footer = 1_296 - 1_193
 
     factors = pd.read_csv(
         filename,
@@ -57,7 +57,7 @@ def read_kf_portfolios(
             end_row = 2_396
         else:
             start_row = 16
-            end_row = 1_205
+            end_row = 1_204
         skip_footer = 8881 - end_row
         date_format = "%Y%m"
 
