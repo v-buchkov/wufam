@@ -5,7 +5,7 @@ from copy import deepcopy
 import pandas as pd
 
 from wufam.strategies.optimization_data import TrainingData, PredictionData
-from wufam.cov_estimators.base_cov_estimator import BaseCovEstimator
+from wufam.estimation.covariance.base_cov_estimator import BaseCovEstimator
 from wufam.features.ols_betas import get_exposures
 
 
@@ -31,7 +31,7 @@ class FactorCovEstimator(BaseCovEstimator):
         if self.factors_selection is not None:
             factors = factors[self.factors_selection]
 
-        self._factor_exposures, self._residuals = get_exposures(
+        _, self._factor_exposures, self._residuals = get_exposures(
             factors=factors,
             targets=training_data.simple_excess_returns,
             return_residuals=True,

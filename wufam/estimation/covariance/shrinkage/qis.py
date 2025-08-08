@@ -176,8 +176,8 @@ class QISCovEstimator(BaseCovEstimator):
         ret = training_data.simple_excess_returns
 
         self._fitted_cov = _QIS(ret, shrinkage=self.shrinkage, k=1)
-        self._fitted_cov.index = self.available_assets
-        self._fitted_cov.columns = self.available_assets
+        self._fitted_cov.index = ret.columns
+        self._fitted_cov.columns = ret.columns
 
     def _predict(self, prediction_data: PredictionData) -> pd.DataFrame:
         return self._fitted_cov

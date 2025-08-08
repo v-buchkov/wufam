@@ -65,7 +65,11 @@ class BaseStrategy(ABC):
         raise NotImplementedError
 
     def get_weights(self, prediction_data: PredictionData) -> pd.DataFrame:
-        rebal_date = prediction_data.features.index[-1] if prediction_data.features is not None else 0
+        rebal_date = (
+            prediction_data.features.index[-1]
+            if prediction_data.features is not None
+            else 0
+        )
         init_weights = pd.DataFrame(0.0, index=[rebal_date], columns=self.all_assets)
         return self._get_weights(
             prediction_data=prediction_data, weights_=init_weights.copy()

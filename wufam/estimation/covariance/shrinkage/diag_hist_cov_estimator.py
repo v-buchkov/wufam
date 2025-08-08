@@ -4,7 +4,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from wufam.strategies.optimization_data import PredictionData
-from wufam.estimation.covariance.heuristic.sample_cov_estimator import SampleCovEstimator
+from wufam.estimation.covariance.heuristic.sample_cov_estimator import (
+    SampleCovEstimator,
+)
 
 
 class DiagSampleCovEstimator(SampleCovEstimator):
