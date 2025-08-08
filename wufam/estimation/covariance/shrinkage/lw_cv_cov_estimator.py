@@ -49,6 +49,7 @@ class LedoitWolfCVCovEstimator(BaseCovEstimator):
             lw = LedoitWolf(store_precision=False)
             lw.fit(ret)
             self._fitted_cov = lw.covariance_
+            self.best_alpha = lw.shrinkage_
 
     def _find_cv_shrinkage(self, ret: pd.DataFrame) -> float:
         alphas = self.alphas
